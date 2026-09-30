@@ -1,0 +1,32 @@
+# The reproducibility contract for every number this repo publishes.
+# Sampling must be honest: nothing here may have been chosen by looking at which
+# questions the model gets right.
+
+name: bird-dev-mini
+source: bird-dev
+
+# Chosen to span three schema shapes, so the failure-mode histogram cannot be an
+# artifact of one database:
+#   superhero              10 tables / 31 cols - join-heavy, narrow
+#   formula_1              13 tables / 94 cols - largest schema in the release
+#   thrombosis_prediction   3 tables / 64 cols - few tables, many columns
+db_ids:
+  - superhero
+  - formula_1
+  - thrombosis_prediction
+
+# 30 per database = 90 questions.
+limit_per_db: 30
+
+# Applied per difficulty group, in dataset order. BIRD's dev.json is grouped by
+# database, so a plain prefix would take only whichever difficulties happen to sit
+# first in each group and the result would not be comparable across databases.
+sampling: stratified_by_difficulty
+
+question_ids: []
+
+notes: >
+  Drawn from BIRD dev (release dev_20240627) as the first 30 questions per database
+  per difficulty stratum, in dataset order. No filtering by question content and no
+  inspection of model outputs at any point. Databases chosen for schema-shape
+  diversity before any query was generated.

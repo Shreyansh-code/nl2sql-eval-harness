@@ -1,0 +1,29 @@
+# The reproducibility contract for every number this repo publishes.
+#
+# Copy to subset.yaml and set db_ids to databases you actually downloaded:
+#   harness dbs          # lists what is on disk under DATA_DIR
+#
+# `sampling` must describe the draw honestly. "contiguous_prefix" is the weakest
+# defensible choice and is fine; anything that was chosen by looking at which
+# questions the model gets right is not, and must not be written here.
+
+name: bird-dev-mini
+source: bird-dev
+
+# 2-3 databases is enough for a credible distribution of failure modes and keeps a
+# full run inside one sitting.
+db_ids:
+  - replace_me
+
+# Cap per database. 0 means no cap.
+limit_per_db: 40
+
+sampling: contiguous_prefix
+
+# Pin exact question ids instead of slicing. Use this when re-running against a
+# published number so the draw cannot drift.
+question_ids: []
+
+notes: >
+  Sample drawn as the first N dev questions per database, in dataset order. No
+  filtering by difficulty, no inspection of model outputs.
