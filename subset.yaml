@@ -15,8 +15,15 @@ db_ids:
   - formula_1
   - thrombosis_prediction
 
-# 30 per database = 90 questions.
-limit_per_db: 30
+# 60 per database = 180 questions.
+#
+# Round-robin stratification is prefix-stable *within* each database, so the
+# 30-per-database draw published in results/ is contained in this one. The two
+# accuracies are therefore comparable question-for-question, and widening the subset did
+# not re-roll the sample. The containment is per database, not a global list prefix: the
+# loader groups questions by db_id, so the 90 are the first 30 of each group rather than
+# the first 90 overall. Tests enforce the per-database property.
+limit_per_db: 60
 
 # Applied per difficulty group, in dataset order. BIRD's dev.json is grouped by
 # database, so a plain prefix would take only whichever difficulties happen to sit

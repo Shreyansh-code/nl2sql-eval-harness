@@ -181,3 +181,117 @@ def test_baseline_gate_fails_loudly_on_a_broken_query(db_path: Path, loaded_ques
         assert "baseline gate failed" in str(exc)
     else:
         raise AssertionError("gate should have raised")
+
+
+class TestNesting:
+    """A widened subset must contain the published one, not re-roll it.
+
+    Round-robin stratification is what makes this true, and it is what lets the
+    90-question M2 result and the wider M3/M4 result be compared instead of merely
+    coexisting. Note the property is per database, not a global list prefix: the loader
+    groups questions by db_id, so containment is checked per group. A test asserts that
+    distinction too, because a global-prefix claim would be wrong.
+    """
+
+    def test_widening_the_cap_keeps_the_earlier_questions(self, tmp_path: Path) -> None:
+        data_dir = _mixed_difficulty_layout(tmp_path)
+        small = _ids(data_dir, limit=30)
+        large = _ids(data_dir, limit=60)
+        assert len(small) == 30 and len(large) == 60
+        assert small == large[:30]
+
+    def test_nesting_holds_per_database(self, tmp_path: Path) -> None:
+        data_dir = _multi_db_layout(tmp_path)
+        for db in ("alpha", "beta"):
+            assert _ids(data_dir, limit=10, db=db) == _ids(data_dir, limit=25, db=db)[:10]
+
+    def test_containment_is_per_database_not_a_global_prefix(self, tmp_path: Path) -> None:
+        """Documents the real shape: grouped by db_id, so not a global prefix."""
+        data_dir = _multi_db_layout(tmp_path)
+        small = _ids(data_dir, limit=10, db="alpha") + _ids(data_dir, limit=10, db="beta")
+        spec = SubsetSpec(
+            name="t",
+            source="bird-dev",
+            db_ids=("alpha", "beta"),
+            limit_per_db=25,
+            sampling="stratified_by_difficulty",
+        )
+        wide = [q.question_id for q in load_questions(data_dir, spec)]
+        assert set(small) <= set(wide)  # contained
+        assert small != wide[: len(small)]  # but not a global prefix
+
+    def test_nesting_holds_across_four_databases(self, tmp_path: Path) -> None:
+        data_dir = _multi_db_layout(tmp_path, dbs=("alpha", "beta", "gamma", "delta"))
+        spec = SubsetSpec(
+            name="t",
+            source="bird-dev",
+            db_ids=("alpha", "beta", "gamma", "delta"),
+            limit_per_db=20,
+            sampling="stratified_by_difficulty",
+        )
+        load_questions(data_dir, spec)
+
+
+def _spec(db: str, limit: int) -> SubsetSpec:
+    return SubsetSpec(
+        name="t",
+        source="bird-dev",
+        db_ids=(db,),
+        limit_per_db=limit,
+        sampling="stratified_by_difficulty",
+    )
+
+
+def _ids(data_dir: Path, *, limit: int, db: str = "league") -> list[str]:
+    return [q.question_id for q in load_questions(data_dir, _spec(db, limit))]
+
+
+def _write_dev_json(data_dir: Path, rows: list[dict]) -> None:
+    (data_dir / "dev.json").write_text(json.dumps(rows), encoding="utf-8")
+
+
+def _mixed_difficulty_layout(tmp_path: Path) -> Path:
+    data_dir = _empty_db(tmp_path, "league")
+    rows = [
+        {
+            "question_id": f"q{i}",
+            "db_id": "league",
+            "question": "?",
+            "evidence": "",
+            "SQL": "SELECT 1",
+            "difficulty": ["simple", "moderate", "challenging"][i % 3],
+        }
+        for i in range(90)
+    ]
+    _write_dev_json(data_dir, rows)
+    return data_dir
+
+
+def _multi_db_layout(tmp_path: Path, dbs: tuple[str, ...] = ("alpha", "beta")) -> Path:
+    data_dir = tmp_path / "multi"
+    rows = []
+    for db in dbs:
+        _empty_db(data_dir, db)
+        for i in range(30):
+            rows.append(
+                {
+                    "question_id": f"{db}_{i}",
+                    "db_id": db,
+                    "question": "?",
+                    "evidence": "",
+                    "SQL": "SELECT 1",
+                    "difficulty": ["simple", "moderate", "challenging"][i % 3],
+                }
+            )
+    _write_dev_json(data_dir, rows)
+    return data_dir
+
+
+def _empty_db(data_dir: Path, db_id: str) -> Path:
+    db_dir = data_dir / "dev_databases" / db_id
+    db_dir.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_dir / f"{db_id}.sqlite")
+    conn.execute("CREATE TABLE t (a INTEGER)")
+    conn.commit()
+    conn.close()
+    return data_dir

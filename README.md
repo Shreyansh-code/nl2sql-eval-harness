@@ -15,7 +15,7 @@ Design rationale, taxonomy, and milestones: [`docs/HLD.md`](docs/HLD.md).
 | Milestone | State |
 |---|---|
 | M1 dataset + executor + ExecMatch, gated on gold SQL scoring 1.0 | done — 90/90 on BIRD dev |
-| M2 generator (standard mode) + report | done — **65.6% EX** (95% CI 56.7–74.4), n=90 |
+| M2 generator (standard mode) + report | done — **64.4% EX** (95% CI 57.8–71.1), n=180 |
 | M3 judge + structured-output validation | not started |
 | M4 50 human labels + kappa | not started |
 | M5 report, README with real numbers, second prompt version | not started |
@@ -24,38 +24,49 @@ Design rationale, taxonomy, and milestones: [`docs/HLD.md`](docs/HLD.md).
 No agreement number is published yet, deliberately. Every number here comes from
 `results/*/report.json`, never from prose — and `harness verify` recomputes it from
 `match.jsonl` by an independent path, so the table below is checkable rather than
-asserted. The M2 run is committed at
-[`results/20260930T155111Z-generate`](results/20260930T155111Z-generate).
+asserted. Both M2 runs are committed under
+[`results/`](results) and can be re-checked with `harness verify <dir>`.
 
 ## Result so far
 
-`gpt-6-luna`, standard mode, BIRD dev mini subset, 90 questions, ~45 seconds wall clock.
+`gpt-6-luna`, standard mode, BIRD dev mini subset, 180 questions, ~95 seconds wall clock.
 
 | Slice | Execution accuracy | n |
 |---|---|---|
-| **overall** | **65.6% (95% CI 56.7–74.4)** | 90 |
-| superhero | 76.7% (63.3–90.0) | 30 |
-| thrombosis_prediction | 66.7% (50.0–83.3) | 30 |
-| formula_1 | 53.3% (33.3–70.0) | 30 |
-| simple | 66.7% (50.0–83.3) | 30 |
-| moderate | 73.3% (56.7–90.0) | 30 |
-| challenging | 56.7% (40.0–73.3) | 30 |
+| **overall** | **64.4% (95% CI 57.8–71.1)** | 180 |
+| superhero | 76.7% (65.0–88.3) | 60 |
+| formula_1 | 63.3% (51.7–75.0) | 60 |
+| thrombosis_prediction | 53.3% (41.7–66.7) | 60 |
+| simple | 72.7% (60.6–81.8) | 66 |
+| moderate | 67.7% (55.4–78.5) | 65 |
+| challenging | 49.0% (34.7–63.3) | 49 |
 
-`gpt-6-luna` rejects `temperature=0`, so this harness cannot pin sampling to a seed and
-**the run is not bit-reproducible**: an earlier identical run scored 66.7% (60/90)
-against this one's 65.6% (59/90). A one-question swing is well inside the confidence
-interval, but it is the reason the README quotes an interval rather than a point, and
-the reason the second prompt version in M5 will be compared with the cache invalidated
-on one side only.
+Difficulty separates cleanly and monotonically (72.7 / 67.7 / 49.0), while the three
+per-database intervals overlap heavily — so the difficulty split is a real finding and
+the per-database ranking is not. Reporting it the other way round would be reading noise. Both runs are committed and independently checkable with `harness verify`:
 
-The schema-richest database is the weakest, which is the expected shape and a useful
-sanity check on the harness. 90/90 generations parsed, 0 SQL errors, 0 questions excluded
-from the denominator, and 0 of the 60 correct verdicts were vacuous (both sides empty) —
-checked explicitly, because that is the easiest way to inflate this number.
+| Run | n | Accuracy | Correct |
+|---|---|---|---|
+| [`20260930T155111Z-generate`](results/20260930T155111Z-generate) | 90 | 65.6% (56.7–74.4) | 59 |
+| [`20260930T155619Z-generate`](results/20260930T155619Z-generate) | 180 | 64.4% (57.8–71.1) | 116 |
 
-**BIRD's `evidence` field is given to the generator.** Published BIRD numbers are
-therefore not directly comparable to this one, and the README says so rather than
-letting a reader assume it.
+**On reproducibility, measured rather than asserted.** `gpt-6-luna` rejects
+`temperature=0`, so this harness cannot pin sampling to a seed and a fresh run is a fresh
+sample. The 90-question run is contained in the 180-question one (stratified sampling is
+prefix-stable within each database — a test enforces it), and across those two runs the
+generator **agreed with itself on 84 of the same 90 questions, flipping 6**. So the
+run-to-run standard deviation on a single question is roughly 2-3%, well inside the
+confidence interval. That is why the table quotes intervals, and why M5 will compare
+prompt versions with the cache invalidated on exactly one side.
+
+Of 180 generations: 180 parsed, 0 SQL errors, 0 excluded from the denominator, and 0 of
+the 116 correct verdicts were vacuous (both result sets empty) — checked explicitly,
+because that is the cheapest way to inflate this number. The 64 failures are 38 row-content
+mismatches and 26 column-count mismatches.
+
+**BIRD's `evidence` field is given to the generator**, so published BIRD numbers are not
+directly comparable to this one, and the README says so rather than letting a reader
+assume it.
 
 ## Setup
 
