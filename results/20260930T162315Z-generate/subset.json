@@ -1,0 +1,15 @@
+{
+  "subset": {
+    "name": "bird-dev-mini",
+    "source": "bird-dev",
+    "db_ids": [
+      "superhero",
+      "formula_1",
+      "thrombosis_prediction"
+    ],
+    "limit_per_db": 60,
+    "sampling": "stratified_by_difficulty",
+    "question_ids": []
+  },
+  "loaded": 180
+}

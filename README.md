@@ -15,8 +15,8 @@ Design rationale, taxonomy, and milestones: [`docs/HLD.md`](docs/HLD.md).
 | Milestone | State |
 |---|---|
 | M1 dataset + executor + ExecMatch, gated on gold SQL scoring 1.0 | done — 90/90 on BIRD dev |
-| M2 generator (standard mode) + report | done — **64.4% EX** (95% CI 57.8–71.1), n=180 |
-| M3 judge + structured-output validation | not started |
+| M2 generator (standard mode) + report | done — **65.0% EX** (95% CI 57.8–71.7), n=180 |
+| M3 judge + structured-output validation | done — **kappa 0.779** vs execution, all 180 judged |
 | M4 50 human labels + kappa | not started |
 | M5 report, README with real numbers, second prompt version | not started |
 | M6 resume integration | blocked on M4 |
@@ -33,7 +33,7 @@ asserted. Both M2 runs are committed under
 
 | Slice | Execution accuracy | n |
 |---|---|---|
-| **overall** | **64.4% (95% CI 57.8–71.1)** | 180 |
+| **overall** | **65.0% (95% CI 57.8–71.7)** | 180 |
 | superhero | 76.7% (65.0–88.3) | 60 |
 | formula_1 | 63.3% (51.7–75.0) | 60 |
 | thrombosis_prediction | 53.3% (41.7–66.7) | 60 |
@@ -49,6 +49,13 @@ the per-database ranking is not. Reporting it the other way round would be readi
 |---|---|---|---|
 | [`20260930T155111Z-generate`](results/20260930T155111Z-generate) | 90 | 65.6% (56.7–74.4) | 59 |
 | [`20260930T155619Z-generate`](results/20260930T155619Z-generate) | 180 | 64.4% (57.8–71.1) | 116 |
+| [`20260930T162315Z-generate`](results/20260930T162315Z-generate) | 180 | 65.0% (57.8–71.7) | 117 |
+
+The third run re-scores the second run's generations with a fixed comparator and changes
+exactly one verdict (`931`: gold returned the TEXT `'202.484'`, the generated query
+returned the REAL `202.484`). `harness generate --seed-cache` makes that comparison
+possible — every question is a cache hit, no model is called, so the 0.6pp difference is
+attributable to the scoring code and nothing else.
 
 **On reproducibility, measured rather than asserted.** `gpt-6-luna` rejects
 `temperature=0`, so this harness cannot pin sampling to a seed and a fresh run is a fresh
@@ -60,13 +67,66 @@ confidence interval. That is why the table quotes intervals, and why M5 will com
 prompt versions with the cache invalidated on exactly one side.
 
 Of 180 generations: 180 parsed, 0 SQL errors, 0 excluded from the denominator, and 0 of
-the 116 correct verdicts were vacuous (both result sets empty) — checked explicitly,
-because that is the cheapest way to inflate this number. The 64 failures are 38 row-content
-mismatches and 26 column-count mismatches.
+the 117 correct verdicts were vacuous (both result sets empty) — checked explicitly,
+because that is the cheapest way to inflate this number.
 
-**BIRD's `evidence` field is given to the generator**, so published BIRD numbers are not
-directly comparable to this one, and the README says so rather than letting a reader
-assume it.
+## What the judge found
+
+`gpt-6-luna` judged all 180 questions — every failure *and* every success, so the judge's
+verdicts can be compared against execution ground truth on the whole population.
+180/180 responses were usable: no unparseable output, no invented categories, and **not one
+fabricated citation**.
+
+Failure modes, over the 46 failures the judge classified:
+
+| Mode | Count | Share |
+|---|---|---|
+| `AGGREGATION_ERROR` | 12 | 26% |
+| `SELECTION_ERROR` | 9 | 20% |
+| `SCHEMA_MISREAD` | 5 | 11% |
+| `WRONG_FILTER` | 5 | 11% |
+| `EMPTY_WRONG` | 5 | 11% |
+| `UNIT_CONVERSION` | 3 | 7% |
+| `WRONG_JOIN` | 2 | 4% |
+| `MISSING_CONDITION` | 2 | 4% |
+| `PRECISION` | 2 | 4% |
+| `TIMEOUT` | 1 | 2% |
+
+Aggregation and column selection together account for 46% of classified failures. Neither
+is what the BIRD difficulty labels suggest is hard — the dataset's own difficulty ranking
+tracks question length and join depth, not whether the model can count at the right grain.
+
+### The judge's disagreements are entirely one-directional
+
+| | execution says correct | execution says wrong |
+|---|---|---|
+| judge says correct | 117 | 17 |
+| judge says wrong | 0 | 46 |
+
+**Cohen's kappa 0.779** (observed agreement 90.6%, chance 57.3%, n=180).
+
+Zero false accusations across 117 correct queries. The judge is never trigger-happy; it is
+**lenient on 17 wrong queries it calls correct**. Direction is the actionable part: a judge
+that accused correct queries would be unusable, whereas one-directional leniency is a
+calibration problem with a known fix (and M4 measures whether those 17 are wrong-but-
+close or genuinely wrong).
+
+### The choice of correctness definition moves the number by 9 points
+
+On the same 180 questions, strict result-set equality gives **65.0%** and the judge's
+semantic standard would give **74.4%**. Nothing about the model changed — only how
+"correct" is defined. That gap is the most transferable thing here: an eval harness that
+never states its correctness definition is reporting a number with an unstated 9-point
+error bar, and published BIRD numbers are not comparable unless you know which convention
+they used.
+
+**Read the kappa narrowly.** The judge is shown the gold SQL and the gold rows, so
+recognising a correct query is easier than detecting a wrong one blind. Kappa 0.779 says the
+judge's verdicts are consistent with ground truth *when it can see ground truth*. It is not
+evidence that the judge could triage errors unaided.
+
+The judge-vs-human failure-mode kappa — the number this project actually exists to produce —
+is **not yet measured**. That is M4.
 
 ## Setup
 
@@ -92,9 +152,12 @@ harness subset                   # load the manifest, preview the generator's in
 harness baseline --strict        # M1 gate: gold SQL must execute and self-match
 harness generate                 # M2: generate, execute, score, write report.md
 harness generate --limit 3       # smoke test before spending anything
+harness judge runs/<run_id>           # M3: classify failures, measure the judge
+harness judge results/<run_id> --all  # judge every question, for the standards comparison
+harness judge <run> --reuse <prior>   # re-judge only what actually changed
 harness publish runs/<run_id>    # promote a run to committed, checkable evidence
-harness verify results/<run_id>  # recompute accuracy from match.jsonl, check report.json
-pytest                           # 139 tests
+harness verify results/<run_id>  # recompute the numbers from the raw artifacts
+pytest                           # 230 tests
 ```
 
 `harness generate` resumes: generations are cached by
@@ -109,6 +172,10 @@ changed prompt is a different key rather than a silent overwrite.
   the report is stamped `INVALID RUN` and the command exits non-zero. This exists because
   the first run of this harness did exactly that — a `temperature` rejection surfaced as
   "0% accuracy", which would have been a fabricated result.
+- **A published number is re-derived, not trusted.** `harness publish` verifies the run
+  before copying it into `results/` and again afterwards. It has already caught two real
+  defects: a comparator that scored `202.484` and `'202.484'` as different, and a
+  re-judging pass that appended a second copy of every row.
 
 ## Layout
 
@@ -118,8 +185,9 @@ src/harness/
   dataset/             BIRD loader, subset manifest, SQLite schema introspection
   execution/           SQL guard, read-only executor with deadline and row cap
   generation/          SqlGenerator port, standard adapter, prompts, parsing, cache
+  judge/               taxonomy, judge prompt, validation, LangGraph, standard + batch clients
   scoring/             ExecMatch, the M1 baseline gate
-  metrics/             bootstrap intervals, report rendering
+  metrics/             bootstrap intervals, report rendering, Cohen's kappa, verification
   tracing/             opt-in LangSmith wrapper
   pipeline.py          generate -> execute -> ExecMatch, per question
   runs.py              append-only JSONL run artifacts

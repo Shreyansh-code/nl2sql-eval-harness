@@ -88,6 +88,17 @@ def bird_layout(tmp_path: Path) -> Path:
             "SQL": "SELECT tournament FROM match ORDER BY tournament",
             "difficulty": "simple",
         },
+        *[
+            {
+                "question_id": f"league_x{i}",
+                "db_id": "league",
+                "question": f"Question {i}?",
+                "evidence": "",
+                "SQL": "SELECT name FROM player",
+                "difficulty": "simple",
+            }
+            for i in range(30)
+        ],
         {
             "question_id": "other_0",
             "db_id": "other",
@@ -134,3 +145,20 @@ def high_cardinality(tmp_path: Path) -> Path:
     conn.commit()
     conn.close()
     return path
+
+
+@pytest.fixture
+def many_questions(bird_layout: Path) -> list[HarnessQuestion]:
+    """20 questions, for tests that need a population to sample from.
+
+    The two-question `loaded_questions` fixture is fine for scoring tests and useless for
+    anything that samples or computes agreement.
+    """
+    spec = SubsetSpec(
+        name="many",
+        source="bird-dev",
+        db_ids=("league",),
+        limit_per_db=20,
+        sampling="contiguous_prefix",
+    )
+    return load_questions(bird_layout, spec)

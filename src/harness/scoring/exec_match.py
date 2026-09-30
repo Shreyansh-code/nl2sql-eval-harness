@@ -66,6 +66,54 @@ def normalize_cell(value: object) -> object:
     return value
 
 
+def canonical_cell(value: object) -> tuple[str, object]:
+    """Hashable, comparison-grade form of a cell.
+
+    Adds one rule on top of `normalize_cell`: a number and a *numerically identical*
+    string are the same value. SQLite hands back TEXT or REAL depending on the column's
+    affinity and on whether the query casts, so `SELECT duration FROM lap` and
+    `SELECT CAST(duration AS TEXT) FROM lap` return 202.484 and '202.484' for the same
+    fact. Counting that as a wrong answer is a defect in the comparator, not in the model.
+
+    Guarded by a round-trip check rather than a bare `float()` parse, so a zero-padded
+    identifier ('007') stays distinct from the number 7. That guard is what stops this
+    convenience rule from quietly merging two genuinely different values.
+    """
+    normalized = normalize_cell(value)
+    if isinstance(normalized, (int, float)) and not isinstance(normalized, bool):
+        return ("num", Decimal(str(normalized)))
+    if isinstance(normalized, str):
+        decimal = _round_trips_to_number(normalized)
+        if decimal is not None:
+            return ("num", decimal)
+    return ("str", normalized)
+
+
+def _round_trips_to_number(text: str) -> Decimal | None:
+    """Parse `text` as a number only if it is the plain rendering of that number."""
+    stripped = text.strip()
+    if not stripped or stripped != text:
+        return None
+    if len(stripped) > 1 and stripped[0] in "+-" and stripped[1] == "0":
+        return None  # -0.5, +0.75 are fine; -007 is an identifier
+    if len(stripped) > 1 and stripped[0] == "0" and stripped[1] not in ".eE":
+        return None  # zero-padded code
+    try:
+        value = Decimal(stripped)
+    except (InvalidOperation, ValueError):
+        return None
+    if not value.is_finite():
+        return None
+    if format(value, "f") != stripped and str(value) != stripped:
+        # Reject '1e3', '1.50', ' 1' and anything else that is not the canonical spelling.
+        return None
+    return value
+
+
+def canonical_row(row: tuple[object, ...]) -> tuple[tuple[str, object], ...]:
+    return tuple(canonical_cell(cell) for cell in row)
+
+
 def _normalize_decimal(value: Decimal) -> object:
     if value.is_nan() or value.is_infinite():
         return str(value)
@@ -82,7 +130,14 @@ def normalize_rows(rows: tuple[tuple[object, ...], ...]) -> tuple[tuple[object, 
     return tuple(tuple(normalize_cell(cell) for cell in row) for row in rows)
 
 
-def _shape(rows: tuple[tuple[object, ...], ...]) -> list[int]:
+def canonical_rows(
+    rows: tuple[tuple[object, ...], ...],
+) -> tuple[tuple[tuple[str, object], ...], ...]:
+    """Comparison-grade rows. Used for the verdict, not for the diff we show a human."""
+    return tuple(canonical_row(row) for row in rows)
+
+
+def _shape(rows: tuple[tuple[tuple[str, object], ...], ...]) -> list[int]:
     return sorted({len(row) for row in rows})
 
 
@@ -93,13 +148,29 @@ def compare(
     *,
     truncated: bool = False,
 ) -> MatchResult:
-    """Compare a generated result set against the gold result set."""
+    """Compare a generated result set against the gold result set.
+
+    The verdict is decided on canonical rows, but the diff attached to the result is built
+    from the display rows. Those are two different jobs: canonical rows exist so that a
+    number and its string form compare equal, and nobody wants to read `('num', Decimal(
+    '202.484'))` in a report.
+    """
     order_sensitive = has_order_by(gold_sql)
-    gold = normalize_rows(gold_rows)
-    generated = normalize_rows(generated_rows)
+    gold = canonical_rows(gold_rows)
+    generated = canonical_rows(generated_rows)
+    shown_gold = normalize_rows(gold_rows)
+    shown_generated = normalize_rows(generated_rows)
 
     if _shape(gold) != _shape(generated):
-        return _mismatch(gold, generated, order_sensitive, truncated, "column_count")
+        return _mismatch(
+            gold,
+            generated,
+            shown_gold,
+            shown_generated,
+            order_sensitive,
+            truncated,
+            "column_count",
+        )
 
     if order_sensitive:
         equal = gold == generated
@@ -126,12 +197,16 @@ def compare(
             truncated=truncated,
         )
 
-    return _mismatch(gold, generated, order_sensitive, truncated, "row_multiset")
+    return _mismatch(
+        gold, generated, shown_gold, shown_generated, order_sensitive, truncated, "row_multiset"
+    )
 
 
 def _mismatch(
-    gold: tuple[tuple[object, ...], ...],
-    generated: tuple[tuple[object, ...], ...],
+    gold: tuple[tuple[tuple[str, object], ...], ...],
+    generated: tuple[tuple[tuple[str, object], ...], ...],
+    shown_gold: tuple[tuple[object, ...], ...],
+    shown_generated: tuple[tuple[object, ...], ...],
     order_sensitive: bool,
     truncated: bool,
     reason: str,
@@ -142,13 +217,13 @@ def _mismatch(
         generated_row_count=len(generated),
         order_sensitive=order_sensitive,
         truncated=truncated,
-        first_difference=_describe(gold, generated, order_sensitive, reason),
+        first_difference=_describe(shown_gold, shown_generated, order_sensitive, reason),
     )
 
 
 def _describe(
-    gold: tuple[tuple[object, ...], ...],
-    generated: tuple[tuple[object, ...], ...],
+    gold: tuple[tuple[tuple[str, object], ...], ...],
+    generated: tuple[tuple[tuple[str, object], ...], ...],
     order_sensitive: bool,
     reason: str,
 ) -> dict[str, object]:

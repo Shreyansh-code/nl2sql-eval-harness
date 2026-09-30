@@ -1,0 +1,50 @@
+{
+  "n_judged": 180,
+  "n_usable": 180,
+  "n_unscored": 0,
+  "statuses": {
+    "ok": 180
+  },
+  "failure_histogram": {
+    "SCHEMA_MISREAD": 5,
+    "WRONG_JOIN": 2,
+    "WRONG_FILTER": 5,
+    "MISSING_CONDITION": 2,
+    "AGGREGATION_ERROR": 12,
+    "SELECTION_ERROR": 9,
+    "UNIT_CONVERSION": 3,
+    "PRECISION": 2,
+    "TIMEOUT": 1,
+    "EMPTY_WRONG": 5
+  },
+  "failure_share": {
+    "SCHEMA_MISREAD": 0.10869565217391304,
+    "WRONG_JOIN": 0.043478260869565216,
+    "WRONG_FILTER": 0.10869565217391304,
+    "MISSING_CONDITION": 0.043478260869565216,
+    "AGGREGATION_ERROR": 0.2608695652173913,
+    "SELECTION_ERROR": 0.1956521739130435,
+    "UNIT_CONVERSION": 0.06521739130434782,
+    "PRECISION": 0.043478260869565216,
+    "TIMEOUT": 0.021739130434782608,
+    "EMPTY_WRONG": 0.10869565217391304
+  },
+  "n_failures_judged": 46,
+  "judge_vs_execution_kappa": {
+    "kappa": 0.7786458333333334,
+    "observed_agreement": 0.9055555555555556,
+    "expected_agreement": 0.5733333333333334,
+    "n": 180,
+    "n_categories": 2,
+    "degenerate": null
+  },
+  "judge_vs_human_mode_kappa": null,
+  "confusion": {},
+  "low_confidence": 0,
+  "disagreement": {
+    "false_accusations": 0,
+    "missed_failures": 17
+  },
+  "judge_standard_accuracy": 0.7444444444444445,
+  "covers_whole_run": true
+}

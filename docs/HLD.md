@@ -264,8 +264,8 @@ src/harness/
 | # | Deliverable | Done when | State |
 |---|---|---|---|
 | M1 | Dataset + executor + ExecMatch | all tests green; baseline of the *gold* SQL scores 1.0 on the subset (this is the harness's own sanity check) | **done** — 90/90 |
-| M2 | Generator, standard mode | full subset runs end to end, `report.md` with a real accuracy number | **done** — 65.6% EX (95% CI 56.7–74.4), n=90 |
-| M3 | Judge + validation | all failures carry a taxonomy label with a cited span | not started |
+| M2 | Generator, standard mode | full subset runs end to end, `report.md` with a real accuracy number | **done** — 65.0% EX (95% CI 57.8–71.7), n=180 |
+| M3 | Judge + validation | all failures carry a taxonomy label with a cited span | **done** — 180/180 usable, kappa 0.779 vs execution |
 | M4 | 50 human labels + kappa | judge-vs-human and judge-vs-execution kappas in the report | not started |
 | M5 | Report polish, README, second prompt version | a prompt change is measurable as a delta on the same subset | not started |
 | M6 | Resume integration | only after M4 has real numbers | blocked on M4 |
@@ -288,15 +288,39 @@ M1's gold-SQL baseline is a deliberate first milestone: if the harness cannot sc
 3. **`evidence` is given to the generator**, so this accuracy is not comparable to
    published BIRD numbers. Stated in the README rather than left for a reader to guess.
 
-### Observed on the first real run (n=90)
+### Decisions forced by the M3 run (2026-09-30)
+
+1. **The judge needed a third verdict.** Section 5.5 originally gave it `generator_error`
+   and `sql_error` only — with no way to say "correct". That made the 20% audit sample of
+   successes incoherent: every audited query would have been forced into a "wrong" label.
+   `sql_ok` was added, and a `sql_ok` verdict paired with a real failure mode is now
+   *rejected* as hedging rather than accepted.
+2. **A number and its string form are the same value.** Question `931` was scored wrong
+   because gold returned TEXT `'202.484'` and the generated query returned REAL `202.484`.
+   `ExecMatch` now canonicalises a numeric string against a number, guarded by a
+   round-trip check so a zero-padded identifier ('007') stays distinct from 7. Re-scoring
+   the identical generations flipped exactly that one verdict: 64.4% → 65.0%. The fix was
+   made despite moving a published number, because a known defect in the foundation is
+   worse than an inconvenient number.
+3. **Judge runs are snapshots, not logs.** Re-judging appended a second copy of every row
+   and doubled every count. `persist` now overwrites, deduplicated by cache key.
+   `harness verify` is what caught this.
+4. **`publish` verifies before copying.** It had published a run that then failed
+   verification, leaving a failing artifact in `results/` as if it were checked evidence.
+5. **The judge-standard accuracy is quoted only on a full-run pass.** On a
+   failures-plus-audit sample the population is deliberately failure-weighted, so an
+   "accuracy" on it is not comparable to the run's accuracy and would invite the wrong
+   reading.
+
+### Observed on the M2 run (n=180, generation)
 
 | Slice | Accuracy |
 |---|---|
-| overall | 65.6% (95% CI 56.7–74.4) |
+| overall | 65.0% (95% CI 57.8–71.7) |
 | superhero (10 tables) | 76.7% |
-| thrombosis_prediction (3 tables) | 66.7% |
-| formula_1 (13 tables) | 53.3% |
-| simple / moderate / challenging | 66.7% / 73.3% / 56.7% |
+| formula_1 (13 tables) | 63.3% |
+| thrombosis_prediction (3 tables) | 53.3% |
+| simple / moderate / challenging | 72.7% / 67.7% / 49.0% |
 
 **Run-to-run variance is real and measured.** Two identical runs of the same prompt and
 model scored 66.7% (60/90) and 65.6% (59/90). With `temperature` unavailable, the only
@@ -305,12 +329,37 @@ reproducibility levers are the content-addressed cache and the recorded
 intervals rather than points, and in M5 compare prompt versions with the cache
 invalidated on exactly one side so the delta is attributable to the prompt.
 
-The ordering by schema width and by difficulty both fall where they should, which is
-weak evidence the harness is measuring the model rather than itself. Integrity checks run
-on the result: 90/90 parsed, 0 SQL errors, 0 excluded from the denominator, 0 vacuous
-matches (correct verdicts where both result sets were empty). Of the 30 failures, 13
-differ in column count and 17 in row content — the raw material M3's taxonomy must
-classify.
+Difficulty separates cleanly and monotonically; the three per-database intervals overlap,
+so the per-database ranking is reported as not established.
+
+### Observed on the M3 run (n=180, judge)
+
+| Measure | Value |
+|---|---|
+| judge outputs usable | 180 / 180 |
+| fabricated citations | 0 |
+| invented categories | 0 |
+| Cohen's kappa vs execution ground truth | **0.779** (observed 90.6%, chance 57.3%) |
+| false accusations (correct query called wrong) | **0** / 117 |
+| missed failures (wrong query called correct) | **17** / 63 |
+| strict execution accuracy | 65.0% |
+| accuracy under the judge's semantic standard | 74.4% |
+
+Two findings, both of which are the project rather than a footnote on it:
+
+1. **Judge error is one-directional.** Zero false accusations across 117 correct queries;
+   all 17 errors are leniency on wrong queries. This is only visible because the audit
+   design put *successes* in front of the judge — a failure-only judging pass would have
+   reported a flattering pass rate and hidden the direction entirely.
+2. **The correctness definition is worth 9.4 points.** Same 180 questions, same model,
+   same gold: 65.0% under strict result-set equality, 74.4% under the judge's semantic
+   standard. An eval that does not state its convention is quoting a number with an
+   unstated 9-point error bar.
+
+Of the 63 failures, the judge classified 46. The 17 it accepted are the interesting
+population for M4: separating "wrong but semantically equivalent" from "wrong and the
+judge was lenient" is exactly what the human labels are for, and it is not answerable
+without them.
 
 ## 12. Risks
 

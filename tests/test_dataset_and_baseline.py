@@ -14,8 +14,11 @@ SPEC = SubsetSpec(name="t", source="bird-dev", db_ids=("league",), limit_per_db=
 
 
 def test_loader_reads_dev_json_and_filters_by_db(loaded_questions) -> None:
-    assert [q.question_id for q in loaded_questions] == ["league_0", "league_1"]
-    assert loaded_questions[0].db_id == "league"
+    """Other databases are excluded; the first rows are the hand-written ones."""
+    ids = [q.question_id for q in loaded_questions]
+    assert ids[:2] == ["league_0", "league_1"]
+    assert "other_0" not in ids
+    assert {q.db_id for q in loaded_questions} == {"league"}
 
 
 def test_loader_attaches_a_real_schema(bird_layout: Path, loaded_questions) -> None:
@@ -163,10 +166,10 @@ def test_available_db_ids_lists_disk_layouts(bird_layout: Path) -> None:
 
 def test_baseline_passes_on_a_healthy_subset(loaded_questions) -> None:
     report = run_baseline(loaded_questions)
-    assert report.total == 2
+    assert report.total == len(loaded_questions)
     assert report.passed == report.total
     gate(report)  # must not raise
-    assert report.rows[0].match.verdict is Verdict.MATCH
+    assert all(row.match.verdict is Verdict.MATCH for row in report.rows)
 
 
 def test_baseline_gate_fails_loudly_on_a_broken_query(db_path: Path, loaded_questions) -> None:

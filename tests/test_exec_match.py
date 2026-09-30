@@ -86,3 +86,47 @@ class TestRowCounts:
     def test_counts_are_reported_for_every_verdict(self) -> None:
         result = compare(GOLD_UNORDERED, (("a",), ("b",)), (("a",),))
         assert (result.gold_row_count, result.generated_row_count) == (2, 1)
+
+
+class TestNumericTextEquivalence:
+    """SQLite returns TEXT or REAL depending on affinity and casts.
+
+    Found in the wild: gold returned '202.484' and the generated query returned 202.484 for
+    the same lap time, and the harness scored it wrong. The rule is narrow on purpose.
+    """
+
+    def test_a_number_and_its_plain_string_form_are_the_same_value(self) -> None:
+        result = compare(GOLD_UNORDERED, (("202.484",),), ((202.484,),))
+        assert result.verdict is Verdict.MATCH
+
+    def test_it_works_with_column_headers_in_the_aggregate(self) -> None:
+        result = compare(GOLD_UNORDERED, ((1, "2.5"),), ((1.0, 2.5),))
+        assert result.verdict is Verdict.MATCH
+
+    def test_a_genuinely_different_number_is_still_a_mismatch(self) -> None:
+        assert compare(GOLD_UNORDERED, (("202.484",),), ((202.5,),)).verdict is Verdict.MISMATCH
+
+    def test_zero_padded_identifiers_stay_distinct_from_numbers(self) -> None:
+        """The guard that stops this convenience rule from masking a real difference."""
+        assert compare(GOLD_UNORDERED, (("007",),), ((7,),)).verdict is Verdict.MISMATCH
+
+    def test_non_canonical_spellings_are_not_numbers(self) -> None:
+        for text in ("1e3", "1.50", " 5", "+5", "1_000"):
+            result = compare(GOLD_UNORDERED, ((text,),), ((1000 if text == "1e3" else 0,),))
+            assert result.verdict is Verdict.MISMATCH, text
+
+    def test_a_date_string_is_not_a_number(self) -> None:
+        assert compare(GOLD_UNORDERED, (("2024-01-01",),), ((2024,),)).verdict is Verdict.MISMATCH
+
+    def test_the_diff_still_shows_readable_values(self) -> None:
+        """Canonical rows decide the verdict; the report must not leak ('num', Decimal(..))."""
+        result = compare(GOLD_UNORDERED, (("202.484",),), ((9.9,),))
+        detail = result.first_difference or {}
+        rendered = str(detail.get("missing_from_generated"))
+        assert "202.484" in rendered
+        assert "Decimal" not in rendered
+        assert "num" not in rendered
+
+    def test_matching_still_ignores_row_order(self) -> None:
+        result = compare(GOLD_UNORDERED, (("1",), ("2",)), ((2.0,), (1.0,)))
+        assert result.verdict is Verdict.MATCH
