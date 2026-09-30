@@ -6,7 +6,13 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Loaded once, with override=False so a real environment variable always wins over the
+# file. That keeps CI and one-off runs from depending on someone's local .env.
+load_dotenv(REPO_ROOT / ".env", override=False)
 
 
 def _env(name: str, default: str | None = None) -> str | None:
