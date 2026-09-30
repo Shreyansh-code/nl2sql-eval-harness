@@ -1,0 +1,76 @@
+{
+  "valid": true,
+  "invalid_reason": null,
+  "n_total": 90,
+  "n_scored": 90,
+  "n_skipped": 0,
+  "api_errors": 0,
+  "exec_accuracy": {
+    "point": 0.6555555555555556,
+    "ci_low": 0.5666666666666667,
+    "ci_high": 0.7444444444444445
+  },
+  "per_db": {
+    "formula_1": {
+      "n": 30,
+      "accuracy": {
+        "point": 0.5333333333333333,
+        "ci_low": 0.3333333333333333,
+        "ci_high": 0.7
+      }
+    },
+    "superhero": {
+      "n": 30,
+      "accuracy": {
+        "point": 0.7666666666666667,
+        "ci_low": 0.6333333333333333,
+        "ci_high": 0.9
+      }
+    },
+    "thrombosis_prediction": {
+      "n": 30,
+      "accuracy": {
+        "point": 0.6666666666666666,
+        "ci_low": 0.5,
+        "ci_high": 0.8333333333333334
+      }
+    }
+  },
+  "per_difficulty": {
+    "challenging": {
+      "n": 30,
+      "accuracy": {
+        "point": 0.5666666666666667,
+        "ci_low": 0.4,
+        "ci_high": 0.7333333333333333
+      }
+    },
+    "moderate": {
+      "n": 30,
+      "accuracy": {
+        "point": 0.7333333333333333,
+        "ci_low": 0.5666666666666667,
+        "ci_high": 0.9
+      }
+    },
+    "simple": {
+      "n": 30,
+      "accuracy": {
+        "point": 0.6666666666666666,
+        "ci_low": 0.5,
+        "ci_high": 0.8333333333333334
+      }
+    }
+  },
+  "execution_outcomes": {
+    "ok": 90
+  },
+  "generation_statuses": {
+    "ok": 90
+  },
+  "tokens": {
+    "input": 108680,
+    "output": 22979
+  },
+  "skipped": {}
+}

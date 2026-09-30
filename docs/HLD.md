@@ -194,6 +194,13 @@ subset.yaml
 ```
 Runs are immutable and self-describing: `meta.json` alone is enough to reproduce the report. Report numbers are always derived from these files, never hand-entered — the README cites `report.json`.
 
+`runs/` is working state and is gitignored. A run becomes public evidence only via
+`harness publish`, which copies it to `results/<run_id>/` **and recomputes the headline
+accuracy from `match.jsonl` by an independent path**, refusing to publish if the
+recomputed number disagrees with `report.json`. A published number is therefore
+checkable by a reviewer without re-running a model, and a doctored `report.json` is
+detectable (`metrics/verify.py`).
+
 ## 7. Configuration
 
 All config via environment variables, one `Settings` object, no values in code.
@@ -254,16 +261,56 @@ src/harness/
 
 ## 11. Milestones
 
-| # | Deliverable | Done when |
-|---|---|---|
-| M1 | Dataset + executor + ExecMatch | all tests green; baseline of the *gold* SQL scores 1.0 on the subset (this is the harness's own sanity check) |
-| M2 | Generator, standard mode | full subset runs end to end, `report.md` with a real accuracy number |
-| M3 | Judge + validation | all failures carry a taxonomy label with a cited span |
-| M4 | 50 human labels + kappa | judge-vs-human and judge-vs-execution kappas in the report |
-| M5 | Report polish, README, second prompt version | a prompt change is measurable as a delta on the same subset |
-| M6 | Resume integration | only after M4 has real numbers |
+| # | Deliverable | Done when | State |
+|---|---|---|---|
+| M1 | Dataset + executor + ExecMatch | all tests green; baseline of the *gold* SQL scores 1.0 on the subset (this is the harness's own sanity check) | **done** — 90/90 |
+| M2 | Generator, standard mode | full subset runs end to end, `report.md` with a real accuracy number | **done** — 65.6% EX (95% CI 56.7–74.4), n=90 |
+| M3 | Judge + validation | all failures carry a taxonomy label with a cited span | not started |
+| M4 | 50 human labels + kappa | judge-vs-human and judge-vs-execution kappas in the report | not started |
+| M5 | Report polish, README, second prompt version | a prompt change is measurable as a delta on the same subset | not started |
+| M6 | Resume integration | only after M4 has real numbers | blocked on M4 |
 
 M1's gold-SQL baseline is a deliberate first milestone: if the harness cannot score a known-correct query at 100%, every later number is untrustworthy, and that is cheaper to discover on day one.
+
+### Decisions forced by the M2 run (2026-09-30)
+
+1. **`temperature` is not sent unless configured.** `gpt-6-luna` rejects `temperature=0`
+   and accepts only its default. Reproducibility therefore comes from the
+   content-addressed cache and the recorded `prompt_version`, not from sampling
+   determinism. The consequence must be stated in the report: two fresh runs of the same
+   prompt are *not* guaranteed identical, so a prompt-version comparison needs the cache
+   invalidated on one side only.
+2. **A run with any API error is invalid, and says so.** The first run of this harness
+   rejected all 90 requests on `temperature` and reported "0% accuracy" — indistinguishable
+   from a model that fails everything. `Report.valid` is now false whenever any generation
+   errored, `report.md` is stamped `INVALID RUN`, and `harness generate` exits 3. A
+   transport failure is not a measurement.
+3. **`evidence` is given to the generator**, so this accuracy is not comparable to
+   published BIRD numbers. Stated in the README rather than left for a reader to guess.
+
+### Observed on the first real run (n=90)
+
+| Slice | Accuracy |
+|---|---|
+| overall | 65.6% (95% CI 56.7–74.4) |
+| superhero (10 tables) | 76.7% |
+| thrombosis_prediction (3 tables) | 66.7% |
+| formula_1 (13 tables) | 53.3% |
+| simple / moderate / challenging | 66.7% / 73.3% / 56.7% |
+
+**Run-to-run variance is real and measured.** Two identical runs of the same prompt and
+model scored 66.7% (60/90) and 65.6% (59/90). With `temperature` unavailable, the only
+reproducibility levers are the content-addressed cache and the recorded
+`prompt_version`; a *fresh* run is a fresh sample. Consequences, both adopted: quote
+intervals rather than points, and in M5 compare prompt versions with the cache
+invalidated on exactly one side so the delta is attributable to the prompt.
+
+The ordering by schema width and by difficulty both fall where they should, which is
+weak evidence the harness is measuring the model rather than itself. Integrity checks run
+on the result: 90/90 parsed, 0 SQL errors, 0 excluded from the denominator, 0 vacuous
+matches (correct verdicts where both result sets were empty). Of the 30 failures, 13
+differ in column count and 17 in row content — the raw material M3's taxonomy must
+classify.
 
 ## 12. Risks
 

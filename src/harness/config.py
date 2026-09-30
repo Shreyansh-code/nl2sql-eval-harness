@@ -32,10 +32,27 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_opt_float(name: str) -> float | None:
+    raw = _env(name)
+    return None if raw is None else float(raw)
+
+
+def _publishable_path(path: Path) -> str:
+    """Repo-relative where possible, else just the final component.
+
+    Committed run metadata must not carry `/Users/<name>/...`.
+    """
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        return path.name
+
+
 @dataclass(frozen=True)
 class Settings:
     generator_model: str | None
     judge_model: str | None
+    generator_temperature: float | None
     generator_mode: str
     judge_mode: str
     openai_base_url: str | None
@@ -53,15 +70,20 @@ class Settings:
         return self.data_dir / "dev_databases"
 
     def redacted(self) -> dict[str, object]:
-        """Snapshot safe to commit into a run's meta.json."""
+        """Snapshot safe to commit into a run's meta.json.
+
+        Absolute local paths are rewritten to repo-relative form: a public artifact
+        should not carry the author's home directory.
+        """
         return {
             "generator_model": self.generator_model,
             "judge_model": self.judge_model,
+            "generator_temperature": self.generator_temperature,
             "generator_mode": self.generator_mode,
             "judge_mode": self.judge_mode,
             "openai_base_url": self.openai_base_url,
-            "data_dir": str(self.data_dir),
-            "subset_path": str(self.subset_path),
+            "data_dir": _publishable_path(self.data_dir),
+            "subset_path": _publishable_path(self.subset_path),
             "max_concurrency": self.max_concurrency,
             "sql_timeout_seconds": self.sql_timeout_seconds,
             "max_rows": self.max_rows,
@@ -88,6 +110,10 @@ def load_settings() -> Settings:
     return Settings(
         generator_model=_env("GENERATOR_MODEL"),
         judge_model=_env("JUDGE_MODEL"),
+        # Left unset by default. Reasoning models such as gpt-6-luna reject
+        # temperature=0 and accept only their default, so sending one is a 400. Where a
+        # model does accept it, set GENERATOR_TEMPERATURE=0 for reproducible sampling.
+        generator_temperature=_env_opt_float("GENERATOR_TEMPERATURE"),
         generator_mode=generator_mode,
         judge_mode=judge_mode,
         openai_base_url=_env("OPENAI_BASE_URL"),

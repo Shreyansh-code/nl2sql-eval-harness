@@ -55,6 +55,7 @@ def test_databases_dir_derives_from_data_dir() -> None:
     settings = Settings(
         generator_model=None,
         judge_model=None,
+        generator_temperature=None,
         generator_mode="standard",
         judge_mode="batch",
         openai_base_url=None,
@@ -68,3 +69,21 @@ def test_databases_dir_derives_from_data_dir() -> None:
         langsmith_tracing=False,
     )
     assert settings.databases_dir.name == "dev_databases"
+
+
+class TestPublishablePaths:
+    def test_paths_inside_the_repo_become_relative(self) -> None:
+        from harness.config import REPO_ROOT, _publishable_path
+
+        assert _publishable_path(REPO_ROOT / "data" / "bird") == "data/bird"
+
+    def test_paths_outside_the_repo_are_reduced_to_a_name(self) -> None:
+        from harness.config import _publishable_path
+
+        assert _publishable_path(Path("/Users/someone/secret/data")) == "data"
+
+    def test_redacted_snapshot_has_no_home_directory(self, monkeypatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-secret")
+        snapshot = load_settings().redacted()
+        assert "/Users/" not in repr(snapshot)
+        assert "sk-secret" not in repr(snapshot)
